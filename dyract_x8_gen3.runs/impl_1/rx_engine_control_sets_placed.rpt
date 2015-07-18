@@ -1,0 +1,58 @@
+Copyright 1986-2014 Xilinx, Inc. All Rights Reserved.
+----------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2014.4 (lin64) Build 1071353 Tue Nov 18 16:47:07 MST 2014
+| Date         : Wed Jul 15 15:26:36 2015
+| Host         : lappc14.epfl.ch running 64-bit Red Hat Enterprise Linux Server release 7.1 (Maipo)
+| Command      : report_control_sets -verbose -file rx_engine_control_sets_placed.rpt
+| Design       : rx_engine
+| Device       : xc7vx690t
+----------------------------------------------------------------------------------------------------
+
+Control Set Information
+
+Table of Contents
+-----------------
+1. Summary
+2. Flip-Flop Distribution
+3. Detailed Control Set Information
+
+1. Summary
+----------
+
++-------------------------------------------------------------------+-------+
+|                               Status                              | Count |
++-------------------------------------------------------------------+-------+
+| Number of unique control sets                                     |     5 |
+| Minimum Number of register sites lost to control set restrictions |     9 |
++-------------------------------------------------------------------+-------+
+
+
+2. Flip-Flop Distribution
+-------------------------
+
++--------------+-----------------------+------------------------+-----------------+--------------+
+| Clock Enable | Synchronous Set/Reset | Asynchronous Set/Reset | Total Registers | Total Slices |
++--------------+-----------------------+------------------------+-----------------+--------------+
+| No           | No                    | No                     |             173 |           63 |
+| No           | No                    | Yes                    |               0 |            0 |
+| No           | Yes                   | No                     |               0 |            0 |
+| Yes          | No                    | No                     |             386 |          124 |
+| Yes          | No                    | Yes                    |               0 |            0 |
+| Yes          | Yes                   | No                     |               0 |            0 |
++--------------+-----------------------+------------------------+-----------------+--------------+
+
+
+3. Detailed Control Set Information
+-----------------------------------
+
++------------------+---------------------------+------------------+------------------+----------------+
+|   Clock Signal   |       Enable Signal       | Set/Reset Signal | Slice Load Count | Bel Load Count |
++------------------+---------------------------+------------------+------------------+----------------+
+|  clk_i_IBUF_BUFG | n_0_cpld_tag_o[7]_i_1     |                  |                3 |              8 |
+|  clk_i_IBUF_BUFG | n_0_tx_reg_data_o[31]_i_1 |                  |                7 |             32 |
+|  clk_i_IBUF_BUFG | n_0_addr_type_o[1]_i_1    |                  |               34 |             90 |
+|  clk_i_IBUF_BUFG |                           |                  |               63 |            173 |
+|  clk_i_IBUF_BUFG | rcvd_data_valid_o0        |                  |               80 |            256 |
++------------------+---------------------------+------------------+------------------+----------------+
+
+
