@@ -85,25 +85,31 @@ module tx_engine    #(
                WR_USR_DATA  = 'd5,
                USER_DMA_REQ = 'd6,
                SEND_ACK_DMA = 'd7,
-			   WAIT_CORE    = 'd8,
-			   WAIT_FIFO    = 'd10;
+			   WAIT_CORE    = 'd8;
 
     reg            state;
     reg [3:0]      dma_state;
     reg [31:0]     rd_data_p;
-    reg [127:0]    user_rd_data_p;
+    reg [255:0]    user_rd_data_p;
+    reg [127:0]    user_rd_data_p1;
     reg [4:0]      wr_cntr;
     wire [10:0]    user_wr_len;
 
     // Unused discontinue
     assign user_wr_len     = user_str_len_i*8;
-	 assign s_axis_cc_tuser = 33'h000000000;
+	assign s_axis_cc_tuser = 33'h000000000;
 
     //Delay the data read from the transmit fifo for 64byte packing.
     always@(posedge clk_i)
     begin
 	     if(user_str_data_rd_o)
-            user_rd_data_p    <= user_str_data_i[255:128];
+            user_rd_data_p    <= user_str_data_i;
+    end
+    
+    always@(posedge clk_i)
+    begin
+        if(user_str_data_rd_o)
+            user_rd_data_p1    <= user_rd_data_p[255:128];
     end
     
     
@@ -365,7 +371,7 @@ module tx_engine    #(
                         s_axis_rq_tvalid <=    1'b0;
                     end
                     wr_cntr             <=    wr_cntr - 1'b1;
-                    s_axis_rq_tdata     <=    {user_str_data_i[127:0],user_rd_data_p};
+                    s_axis_rq_tdata     <=    {user_str_data_i[127:0],user_rd_data_p[255:128]};
                 end 
 				else
 				begin
@@ -377,12 +383,12 @@ module tx_engine    #(
 			WAIT_CORE:begin
 			    if(s_axis_rq_tready)
 			    begin
-			    	s_axis_rq_tdata     <=     {user_str_data_i[127:0],user_rd_data_p};
+			    	s_axis_rq_tdata     <=     {user_rd_data_p[127:0],user_rd_data_p1};
                     wr_cntr             <=     wr_cntr - 1'b1;
 			        if(wr_cntr == 2)
 			        begin
                         user_str_data_rd_o  <= 1'b0;
-                        dma_state           <= WAIT_FIFO;
+                        dma_state           <= WR_USR_DATA;
                     end    
 				    else if(wr_cntr == 1)
                     begin
@@ -403,23 +409,10 @@ module tx_engine    #(
 					begin
 					    s_axis_rq_tvalid   <=    1'b0;
 					    s_axis_rq_tlast    <=    1'b0;
-						dma_state          <=    WAIT_FIFO;
+						dma_state          <=    WR_USR_DATA;
 						user_str_data_rd_o <=    1'b1;
 					end
 				end
-			end
-			
-			WAIT_FIFO:begin
-			    s_axis_rq_tvalid   <=    1'b1;
-			    dma_state          <=    WR_USR_DATA;
-                if(wr_cntr == 2)
-                     user_str_data_rd_o  <= 1'b0;
-                else if(wr_cntr == 1) //simply wait for tready to change status.
-                begin
-                     s_axis_rq_tlast     <=    1'b1;
-                     s_axis_tx_tkeep     <=    8'h0F;
-                     user_str_dma_done_o <=    1'b1;
-                end  			    
 			end
 			
             REQ_INTR:begin        //Send interrupt through PCIe interrupt port
