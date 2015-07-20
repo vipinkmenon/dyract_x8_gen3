@@ -72,8 +72,6 @@ module tx_engine    #(
   output reg                     cfg_interrupt_o,
   input                          cfg_interrupt_rdy_i
 );
-
-  ///* synthesis translate_off */
 	
 
    // State Machine state declaration
@@ -81,14 +79,13 @@ module tx_engine    #(
                SEND_DATA    = 'd1,
                SEND_DMA_REQ = 'd2,
                REQ_INTR     = 'd3,
-			   WR_USR_HDR   = 'd4,
+               WR_USR_HDR   = 'd4,
                WR_USR_DATA  = 'd5,
-               USER_DMA_REQ = 'd6,
-               SEND_ACK_DMA = 'd7,
-			   WAIT_CORE    = 'd8;
+               SEND_ACK_DMA = 'd6,
+               WAIT_CORE    = 'd7;
 
     reg            state;
-    reg [3:0]      dma_state;
+    reg [2:0]      dma_state;
     reg [31:0]     rd_data_p;
     reg [255:0]    user_rd_data_p;
     reg [127:0]    user_rd_data_p1;
@@ -124,7 +121,7 @@ module tx_engine    #(
         intr_req_done_o   <=  1'b0;
         user_str_data_rd_o <= 1'b0;
         state             <= IDLE;
-		  dma_state         <= IDLE;
+        dma_state         <= IDLE;
         user_str_dma_done_o <= 1'b0;
     end
 
@@ -135,8 +132,7 @@ module tx_engine    #(
             IDLE : begin
                 s_axis_cc_tlast  <= 1'b0;
                 s_axis_cc_tvalid <= 1'b0;
-				    compl_done_o     <=  1'b0;
-                if (req_compl_wd_i & !compl_done_o)                //If completion request from Rx engine
+                if (req_compl_wd_i)                                 //If completion request from Rx engine
                 begin
                     s_axis_cc_tlast  <= 1'b1;
                     s_axis_cc_tvalid <= 1'b1;                       
@@ -165,15 +161,16 @@ module tx_engine    #(
 											req_addr_i               // 7
                                           };
                     s_axis_cc_tkeep   <=  8'h0F;
-                    state             <= SEND_DATA;
+                    state             <=  SEND_DATA;
+                    compl_done_o      <=  1'b1;
                 end   
             end            
             SEND_DATA : begin
+                compl_done_o     <= 1'b0;
                 if (s_axis_cc_tready) 
                 begin
                     s_axis_cc_tlast  <= 1'b0;
                     s_axis_cc_tvalid <= 1'b0;
-					compl_done_o     <= 1'b1;
                     state            <= IDLE;
                 end 
                 else
@@ -193,14 +190,12 @@ module tx_engine    #(
                 s_axis_rq_tvalid <= 1'b0;
                 intr_req_done_o  <= 1'b0;
                 wr_cntr <= 0;
-				config_dma_req_done_o <= 1'b0; 
-                sys_user_dma_req_done_o <= 1'b0; 
 				user_str_dma_done_o <= 1'b0;
-                if(config_dma_req_i & !config_dma_req_done_o )                     //If system memory DMA read request for reconfiguration
+                if(config_dma_req_i)                     //If system memory DMA read request for reconfiguration
                 begin
-                  s_axis_rq_tlast  <= 1'b1;
-                  s_axis_rq_tvalid <= 1'b1;
-                  s_axis_rq_tdata  <= { 
+                    s_axis_rq_tlast  <= 1'b1;
+                    s_axis_rq_tvalid <= 1'b1;
+                    s_axis_rq_tdata  <= { 
 										128'b0,                                    // 4DW Unused
                                         1'b0,                                      // Force ECRC
                                         3'b000,                                    // Attributes
@@ -228,11 +223,12 @@ module tx_engine    #(
                                          4'hF,         // Last BE of the Read Data
                                          4'hF          // First BE of the Read Data
                                         };
-                  s_axis_rq_tkeep   <=  8'h0F;
-                  dma_state         <= SEND_DMA_REQ;
+                  s_axis_rq_tkeep       <=  8'h0F;
+                  dma_state             <= SEND_DMA_REQ;
+                  config_dma_req_done_o <= 1'b1;
                 end 
                 
-                else if(sys_user_dma_req_i & !sys_user_dma_req_done_o)           //If system memory DMA read request for PCIe stream
+                else if(sys_user_dma_req_i)           //If system memory DMA read request for PCIe stream
                 begin
                    s_axis_rq_tlast  <= 1'b1;
                    s_axis_rq_tvalid <= 1'b1;
@@ -265,7 +261,8 @@ module tx_engine    #(
                                          4'hF          // First BE of the Read Data
                                         };
                     s_axis_rq_tkeep   <=  8'h0F;
-                    dma_state         <= USER_DMA_REQ;
+                    dma_state         <= SEND_DMA_REQ;
+                    sys_user_dma_req_done_o <= 1'b1; 
                 end 
                 
                 else if(user_str_data_avail_i & s_axis_rq_tready)
@@ -275,11 +272,12 @@ module tx_engine    #(
                     wr_cntr             <=  user_str_len_i;
                 end
                 
-                else if(intr_req_i & ~intr_req_done_o) //If there is interrupt request and no data in the transmit fifo
+                else if(intr_req_i) //If there is interrupt request and no data in the transmit fifo
                 begin
                     dma_state       <=  REQ_INTR;
-					cfg_interrupt_o <= 1'b1;
-				end
+	                cfg_interrupt_o <=  1'b1;
+	                intr_req_done_o <=  1'b1;
+                end
 				
                 else 
                 begin
@@ -290,33 +288,20 @@ module tx_engine    #(
             end 
 
             SEND_DMA_REQ:begin
+                config_dma_req_done_o   <= 1'b0;
+                sys_user_dma_req_done_o <= 1'b0;
                 if (s_axis_rq_tready) 
                 begin
                     s_axis_rq_tlast       <= 1'b0;
                     s_axis_rq_tvalid      <= 1'b0; 
                     dma_state             <= IDLE;
-                    config_dma_req_done_o <= 1'b1;
                 end
-                else
-                    dma_state            <= SEND_DMA_REQ;
-            end
-
-            USER_DMA_REQ:begin
-                if (s_axis_rq_tready) 
-                begin
-                    s_axis_rq_tlast         <= 1'b0;
-                    s_axis_rq_tvalid        <= 1'b0; 
-                    dma_state               <= IDLE;
-                    sys_user_dma_req_done_o <= 1'b1;
-                end
-                else
-                    dma_state               <= USER_DMA_REQ;
             end
 				
-			WR_USR_HDR:begin
-			    s_axis_rq_tvalid <= 1'b1;
+	        WR_USR_HDR:begin
+		        s_axis_rq_tvalid <= 1'b1;
                 s_axis_rq_tdata  <= { 
-									 user_str_data_i[127:0],                    // 4DW User data
+				                     user_str_data_i[127:0],                    // 4DW User data
                                      1'b0,                                      // Force ECRC
                                      3'b000,                                    // Attributes
                                      3'b000,                                    // Traffic Class
@@ -353,10 +338,10 @@ module tx_engine    #(
 			
             WR_USR_DATA:begin
                 user_str_dma_done_o <= 1'b0;
-				if(s_axis_rq_tready)
-				begin
+		        if(s_axis_rq_tready)
+		        begin
                     if(wr_cntr == 2)
-                        user_str_data_rd_o    <=    1'b0;
+                        user_str_data_rd_o  <=    1'b0;
                     else if(wr_cntr == 1)
                     begin
                         user_str_data_rd_o  <= 1'b0;
@@ -373,24 +358,24 @@ module tx_engine    #(
                     wr_cntr             <=    wr_cntr - 1'b1;
                     s_axis_rq_tdata     <=    {user_str_data_i[127:0],user_rd_data_p[255:128]};
                 end 
-				else
-				begin
-				    user_str_data_rd_o    <=    1'b0;
-					dma_state             <=    WAIT_CORE;
-				end	  
+		        else
+		        begin
+		            user_str_data_rd_o    <=    1'b0;
+		            dma_state             <=    WAIT_CORE;
+		        end	  
             end
             
-			WAIT_CORE:begin
-			    if(s_axis_rq_tready)
-			    begin
-			    	s_axis_rq_tdata     <=     {user_rd_data_p[127:0],user_rd_data_p1};
+            WAIT_CORE:begin
+                if(s_axis_rq_tready)
+                begin
+                    s_axis_rq_tdata     <=     {user_rd_data_p[127:0],user_rd_data_p1};
                     wr_cntr             <=     wr_cntr - 1'b1;
-			        if(wr_cntr == 2)
-			        begin
+                    if(wr_cntr == 2)
+                    begin
                         user_str_data_rd_o  <= 1'b0;
                         dma_state           <= WR_USR_DATA;
                     end    
-				    else if(wr_cntr == 1)
+                    else if(wr_cntr == 1)
                     begin
                         user_str_data_rd_o  <= 1'b0;
                         s_axis_rq_tlast     <= 1'b1;
@@ -399,33 +384,32 @@ module tx_engine    #(
                         user_str_dma_done_o <= 1'b1;
                         dma_state           <= WR_USR_DATA; 
                     end                        
-				    else if(wr_cntr == 0) //simply wait for tready to change status.
+                    else if(wr_cntr == 0) //simply wait for tready to change status.
                     begin
                         dma_state        <=    IDLE;
                         s_axis_rq_tlast  <=    1'b0;
                         s_axis_rq_tvalid <=    1'b0;
                     end
-					else
-					begin
-					    s_axis_rq_tvalid   <=    1'b0;
-					    s_axis_rq_tlast    <=    1'b0;
-						dma_state          <=    WR_USR_DATA;
-						user_str_data_rd_o <=    1'b1;
-					end
-				end
-			end
+                    else
+                    begin
+                        s_axis_rq_tvalid   <=    1'b0;
+                        s_axis_rq_tlast    <=    1'b0;
+                        dma_state          <=    WR_USR_DATA;
+                        user_str_data_rd_o <=    1'b1;
+                    end
+                end
+            end
 			
             REQ_INTR:begin        //Send interrupt through PCIe interrupt port
+                intr_req_done_o <= 1'b0;
                 if(cfg_interrupt_rdy_i)
                 begin
                     cfg_interrupt_o <= 1'b0;
                     dma_state       <= IDLE;
-                    intr_req_done_o <= 1'b1;
                 end
             end
         endcase
     end
  
-    ///* synthesis translate_on */
  
 endmodule
